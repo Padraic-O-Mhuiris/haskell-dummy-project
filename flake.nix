@@ -1,37 +1,42 @@
+# SPDX-FileCopyrightText: 2021 Serokell <https://serokell.io/>
+#
+# SPDX-License-Identifier: CC0-1.0
+
 {
-  description = "A very basic flake";
-  inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
-  inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-  outputs = { self, nixpkgs, flake-utils, haskellNix }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
+  description = "My haskell application";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [
-          haskellNix.overlay
-          (final: prev: {
-            # This overlay adds our project to pkgs
-            helloProject = final.haskell-nix.project' {
-              src = ./.;
-              compiler-nix-name = "ghc8105";
-              # This is used by `nix develop .` to open a shell for use with
-              # `cabal`, `hlint` and `haskell-language-server`
-              shell.tools = {
-                cabal = { };
-                hlint = { };
-                haskell-language-server = { };
-              };
-              # This adds `js-unknown-ghcjs-cabal` to the shell.
-              shell.crossPlatform = p: [ p.ghcjs ];
-            };
-          })
-        ];
-        pkgs = import nixpkgs { inherit system overlays; };
-        flake = pkgs.helloProject.flake {
-          # This adds support for `nix build .#js-unknown-ghcjs-cabal:hello:exe:hello`
-          crossPlatforms = p: [ p.ghcjs ];
+        pkgs = nixpkgs.legacyPackages.${system};
+
+        haskellPackages = pkgs.haskellPackages;
+
+        jailbreakUnbreak = pkg:
+          pkgs.haskell.lib.doJailbreak (pkg.overrideAttrs (_: { meta = { }; }));
+
+        # DON'T FORGET TO PUT YOUR PACKAGE NAME HERE, REMOVING `throw`
+        packageName = "haskell-dummy-project";
+      in {
+        packages.${packageName} = haskellPackages.callCabal2nix packageName self
+          rec {
+            # Dependency overrides go here
+          };
+
+        defaultPackage = self.packages.${system}.${packageName};
+
+        devShell = pkgs.mkShell {
+          buildInputs = with haskellPackages; [
+            haskell-language-server
+            ghcid
+            cabal-install
+          ];
+          inputsFrom = builtins.attrValues self.packages.${system};
         };
-      in flake // {
-        # Built by `nix build .`
-        defaultPackage = flake.packages."hello:exe:hello";
       });
 }
